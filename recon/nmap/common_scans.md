@@ -1,0 +1,3 @@
+# Common Nmap Scans
+
+Basic scan examples...
