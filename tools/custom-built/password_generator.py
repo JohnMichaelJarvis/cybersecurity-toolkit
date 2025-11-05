@@ -32,4 +32,65 @@ Disclaimer
   security policies and consult security experts as needed.
 """
 
+import secrets
+import string
+import unicodedata
 
+
+def generate_password(
+    use_unicode: bool = False,
+    pw_type="random",
+    random_type_length=16,
+    memorable_type_length=4,
+) -> str:
+    """TODO: Generate docstring"""
+
+    PW_TYPES: set = {"random", "memorable"}
+
+    if pw_type != "memorable" or pw_type not in PW_TYPES:
+        password: str = _generate_random_type_password(
+            use_unicode, length=random_type_length
+        )
+    else:
+        password: str = _generate_memorable_type_password(
+            use_unicode, memorable_type_length
+        )
+    return password
+
+
+def _generate_random_type_password(use_unicode: bool, length: int) -> str:
+    """TODO"""
+    # Default length for a password genrated from randomly chosen characters.
+    MIN_LENGTH: int = 8
+    MAX_LENGTH: int = 64
+
+    if length not in range(MIN_LENGTH, MAX_LENGTH + 1):
+        length = 16
+
+    # Default alphabet using ascii characters
+    ascii_alphabet: str = string.ascii_letters + string.digits + string.punctuation
+    if use_unicode:
+        # Conservative, vetted extra characters (currency/math/typographic symbols).
+        # Keep this small to reduce compatibility issues; adjust as needed.
+        extra_unicode: str = "¡¢£¤¥§©®±µ¶•–—…°€†‡"
+        # Normalize and filter to printable, non-space characters
+        extra_filtered: str = "".join(
+            ch
+            for ch in unicodedata.normalize("NFC", extra_unicode)
+            if ch.isprintable() and not ch.isspace()
+        )
+        alphabet = ascii_alphabet + extra_filtered
+    else:
+        alphabet = ascii_alphabet
+
+    password = "".join([secrets.choice(alphabet) for ch in range(length)])
+
+    return password
+
+
+def _generate_memorable_type_password(use_unicode: bool, length: int) -> str:
+    """TODO"""
+
+    password = "placeholder"
+
+    return password
