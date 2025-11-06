@@ -31,7 +31,11 @@ def test_random_password_custom_length():
 def test_memorable_passphrase_basic():
     mod = load_pw_module()
     # check if the wordlist exists — skip test if it's missing
-    wl_path = Path(__file__).parent.parent.parent.parent / "wordlists" / "eff_large_wordlist.txt"
+    wl_path = (
+        Path(__file__).parent.parent.parent.parent
+        / "wordlists"
+        / "eff_large_wordlist.txt"
+    )
     if not wl_path.exists():
         pytest.skip(
             f"EFF wordlist not found at {wl_path}; skipping memorable passphrase test"
