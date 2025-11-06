@@ -42,18 +42,21 @@ def generate_password(
     pw_type="random",
     random_type_length=16,
     memorable_type_length=4,
+    separator: str = "-",
 ) -> str:
     """TODO: Generate docstring"""
 
     PW_TYPES: set = {"random", "memorable"}
+    
+    password: str = ""
 
     if pw_type != "memorable" or pw_type not in PW_TYPES:
-        password: str = _generate_random_type_password(
+        password = _generate_random_type_password(
             use_unicode, length=random_type_length
         )
     else:
-        password: str = _generate_memorable_type_password(
-            use_unicode, memorable_type_length
+        password = _generate_memorable_type_password(
+            use_unicode, memorable_type_length, separator
         )
     return password
 
@@ -88,9 +91,15 @@ def _generate_random_type_password(use_unicode: bool, length: int) -> str:
     return password
 
 
-def _generate_memorable_type_password(use_unicode: bool, length: int) -> str:
+def _generate_memorable_type_password(
+    use_unicode: bool, length: int, separator: str
+) -> str:
     """TODO"""
 
-    password = "placeholder"
+    with open("wordlists/eff_large_wordlist.txt", "r") as file:
+        wordlist: list = file.readlines()
+        wordlist = [word.strip() for word in wordlist]
+
+    password: str = "-".join(secrets.choice(wordlist) for word in wordlist)
 
     return password
