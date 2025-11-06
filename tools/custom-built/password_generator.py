@@ -35,6 +35,13 @@ Disclaimer
 import secrets
 import string
 import unicodedata
+from pathlib import Path
+import logging
+from threading import Lock
+
+_WORDLIST_LOCK: Lock = Lock()
+_WORDLIST: list[str] | None = None
+_ASCII_ALPHABET: str = string.ascii_letters + string.digits + string.punctuation
 
 
 def generate_password(
@@ -45,7 +52,7 @@ def generate_password(
     separator: str = "-",
 ) -> str:
     """
-     Generate a password or passphrase.
+    Generate a password or passphrase.
     Returns a randomly-generated character password or a memorable word-based
     passphrase depending on the pw_type argument. Unicode is opt-in; output is
     normalized to NFC.
@@ -71,43 +78,37 @@ def generate_password(
     """
 
     PW_TYPES: set = {"random", "memorable"}
-    
-    password: str = ""
-
-    if pw_type != "memorable" or pw_type not in PW_TYPES:
+    if pw_type not in PW_TYPES:
+        raise ValueError(f"Unsupported pw_type: {pw_type!r}")
+    if pw_type == "memorable":
+        password: str = _generate_memorable_type_password(
+            use_unicode, memorable_type_length, separator
+        )
+    else:
         password = _generate_random_type_password(
             use_unicode, length=random_type_length
         )
-    else:
-        password = _generate_memorable_type_password(
-            use_unicode, memorable_type_length, separator
-        )
+
+    password = unicodedata.normalize("NFC", password)
+
     return password
 
 
 def _generate_random_type_password(use_unicode: bool, length: int) -> str:
     """
     Generate a character-based password using a cryptographically-secure RNG.
-
-    Parameters
-    - use_unicode (bool): Whether to include the conservative Unicode extras.
-    - length (int): Desired password length (number of characters). The calling
-      code enforces/validates sensible minimum and maximum lengths; if the
-      requested length is outside supported bounds, a default or clamped value
-      will be used.
-
-    Returns
-    - str: A cryptographically-random password string of the requested length.
     """
-    # Default length for a password genrated from randomly chosen characters.
+    # Set bounds on password length.
     MIN_LENGTH: int = 8
     MAX_LENGTH: int = 64
 
-    if length not in range(MIN_LENGTH, MAX_LENGTH + 1):
-        length = 16
+    # Ensure user-provided length is within bounds.
+    length = max(MIN_LENGTH, min(length, MAX_LENGTH))
 
     # Default alphabet using ascii characters
-    ascii_alphabet: str = string.ascii_letters + string.digits + string.punctuation
+    global _ASCII_ALPHABET
+    ascii_alphabet: str = _ASCII_ALPHABET
+
     if use_unicode:
         # Conservative, vetted extra characters (currency/math/typographic symbols).
         # Keep this small to reduce compatibility issues; adjust as needed.
@@ -122,7 +123,12 @@ def _generate_random_type_password(use_unicode: bool, length: int) -> str:
     else:
         alphabet = ascii_alphabet
 
-    password = "".join([secrets.choice(alphabet) for ch in range(length)])
+    if not alphabet:
+        raise ValueError("Alphabet is empty; check configuration or wordlist.")
+
+    password = "".join([secrets.choice(alphabet) for _ in range(length)])
+
+    password = unicodedata.normalize("NFC", password)
 
     return password
 
@@ -133,27 +139,56 @@ def _generate_memorable_type_password(
     """
     Generate a memorable passphrase by selecting random words from a wordlist.
 
-    Behavior
-    - Reads a vetted wordlist (default path: `wordlists/eff_large_wordlist.txt`)
-      and selects `length` words uniformly at random using a CSPRNG.
-    - Joins the words with `separator` to form the final passphrase.
-    - If `use_unicode` is True and the wordlist contains Unicode, selected words
-      are normalized to NFC before joining.
-
-    Parameters
-    - use_unicode (bool): Whether to allow/normalize Unicode content from the
-      wordlist. Note that enabling Unicode may reduce portability on some systems.
-    - length (int): Number of words to include in the passphrase.
-    - separator (str): Separator string placed between words in the passphrase.
-
-    Returns
-    - str: The generated passphrase (words joined by `separator`).
     """
-    
-    with open("wordlists/eff_large_wordlist.txt", "r") as file:
-        wordlist: list = file.readlines()
-        wordlist = [word.strip() for word in wordlist]
+    MAX_MEM_WORDS = 12
 
-    password: str = "-".join(secrets.choice(wordlist) for word in wordlist)
+    if length < 1:
+        raise ValueError("Memorable passphrase length must be >= 1 ")
+    elif length < 4:
+        logging.warning("Memorable passphrases with fewer than 4 words may be weak.")
+
+    length = min(length, MAX_MEM_WORDS)
+
+    wordlist: list[str] = _load_eff_wordlist()
+
+    if len(wordlist) == 0:
+        raise ValueError("Wordlist is empty; cannot generate memorable passphrase.")
+
+    password: str = separator.join(secrets.choice(wordlist) for _ in range(length))
 
     return password
+
+
+def _load_eff_wordlist() -> list[str]:
+    """
+    Load and cache the EFF wordlist. Returns a list of words (NFC-normalized).
+    Raises FileNotFoundError if the file is missing.
+    """
+    global _WORDLIST
+    with _WORDLIST_LOCK:
+        if _WORDLIST is not None:
+            return _WORDLIST
+
+    wl_path = (
+        Path(__file__).parent.parent.parent / "wordlists" / "eff_large_wordlist.txt"
+    )
+    words: list[str] = []
+    try:
+        with wl_path.open("r", encoding="utf-8") as f:
+            for line in f:
+                s = line.strip()
+                if not s:
+                    continue
+                # support lines like "12345 word" -> take last token
+                word = s.split()[-1]
+                word = unicodedata.normalize("NFC", word)
+                words.append(word)
+    except FileNotFoundError:
+        raise FileNotFoundError(f"Wordlist not found at expected path: {wl_path!r}")
+
+    if not words:
+        raise ValueError("Loaded wordlist is empty; check the wordlist file.")
+
+    _WORDLIST = words
+
+    return _WORDLIST
