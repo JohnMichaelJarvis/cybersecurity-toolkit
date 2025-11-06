@@ -1,4 +1,8 @@
-Package  Version
--------- -------
-pip      23.2.1
-xkcdpass 1.20.0
+Package   Version
+--------- -------
+iniconfig 2.3.0
+packaging 25.0
+pip       25.3
+pluggy    1.6.0
+Pygments  2.19.2
+pytest    8.4.2
