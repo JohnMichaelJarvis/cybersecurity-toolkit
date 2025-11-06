@@ -44,7 +44,31 @@ def generate_password(
     memorable_type_length=4,
     separator: str = "-",
 ) -> str:
-    """TODO: Generate docstring"""
+    """
+     Generate a password or passphrase.
+    Returns a randomly-generated character password or a memorable word-based
+    passphrase depending on the pw_type argument. Unicode is opt-in; output is
+    normalized to NFC.
+
+    Parameters
+    - use_unicode (bool): If True, include a small conservative set of extra
+      Unicode characters when generating character-based passwords. Default False
+      for maximum portability.
+    - pw_type (str): Type of password to generate. Supported values:
+      - "random": character-based password (default)
+      - "memorable": word-based passphrase drawn from a vetted wordlist
+    - random_type_length (int): Length (number of characters) for random type
+      passwords. Defaults to 16. Values outside the supported range will be
+      clamped by the underlying generator.
+    - memorable_type_length (int): Number of words for memorable passphrases.
+      Defaults to 4.
+    - separator (str): String used to join words for memorable passphrases.
+      Default is "-".
+
+    Returns
+    - str: Generated secret (password or passphrase). The string is normalized
+      (NFC) by the underlying generators to reduce combining-character issues.
+    """
 
     PW_TYPES: set = {"random", "memorable"}
     
@@ -62,7 +86,19 @@ def generate_password(
 
 
 def _generate_random_type_password(use_unicode: bool, length: int) -> str:
-    """TODO"""
+    """
+    Generate a character-based password using a cryptographically-secure RNG.
+
+    Parameters
+    - use_unicode (bool): Whether to include the conservative Unicode extras.
+    - length (int): Desired password length (number of characters). The calling
+      code enforces/validates sensible minimum and maximum lengths; if the
+      requested length is outside supported bounds, a default or clamped value
+      will be used.
+
+    Returns
+    - str: A cryptographically-random password string of the requested length.
+    """
     # Default length for a password genrated from randomly chosen characters.
     MIN_LENGTH: int = 8
     MAX_LENGTH: int = 64
@@ -94,8 +130,26 @@ def _generate_random_type_password(use_unicode: bool, length: int) -> str:
 def _generate_memorable_type_password(
     use_unicode: bool, length: int, separator: str
 ) -> str:
-    """TODO"""
+    """
+    Generate a memorable passphrase by selecting random words from a wordlist.
 
+    Behavior
+    - Reads a vetted wordlist (default path: `wordlists/eff_large_wordlist.txt`)
+      and selects `length` words uniformly at random using a CSPRNG.
+    - Joins the words with `separator` to form the final passphrase.
+    - If `use_unicode` is True and the wordlist contains Unicode, selected words
+      are normalized to NFC before joining.
+
+    Parameters
+    - use_unicode (bool): Whether to allow/normalize Unicode content from the
+      wordlist. Note that enabling Unicode may reduce portability on some systems.
+    - length (int): Number of words to include in the passphrase.
+    - separator (str): Separator string placed between words in the passphrase.
+
+    Returns
+    - str: The generated passphrase (words joined by `separator`).
+    """
+    
     with open("wordlists/eff_large_wordlist.txt", "r") as file:
         wordlist: list = file.readlines()
         wordlist = [word.strip() for word in wordlist]
