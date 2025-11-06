@@ -169,26 +169,26 @@ def _load_eff_wordlist() -> list[str]:
         if _WORDLIST is not None:
             return _WORDLIST
 
-    wl_path = (
-        Path(__file__).parent.parent.parent / "wordlists" / "eff_large_wordlist.txt"
-    )
-    words: list[str] = []
-    try:
-        with wl_path.open("r", encoding="utf-8") as f:
-            for line in f:
-                s = line.strip()
-                if not s:
-                    continue
-                # support lines like "12345 word" -> take last token
-                word = s.split()[-1]
-                word = unicodedata.normalize("NFC", word)
-                words.append(word)
-    except FileNotFoundError:
-        raise FileNotFoundError(f"Wordlist not found at expected path: {wl_path!r}")
+        wl_path = (
+            Path(__file__).parent.parent.parent / "wordlists" / "eff_large_wordlist.txt"
+        )
+        words: list[str] = []
+        try:
+            with wl_path.open("r", encoding="utf-8") as f:
+                for line in f:
+                    s = line.strip()
+                    if not s:
+                        continue
+                    # support lines like "12345 word" -> take last token
+                    word = s.split()[-1]
+                    word = unicodedata.normalize("NFC", word)
+                    words.append(word)
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Wordlist not found at expected path: {wl_path!r}")
 
-    if not words:
-        raise ValueError("Loaded wordlist is empty; check the wordlist file.")
+        if not words:
+            raise ValueError("Loaded wordlist is empty; check the wordlist file.")
 
-    _WORDLIST = words
+        _WORDLIST = words
 
-    return _WORDLIST
+        return _WORDLIST
