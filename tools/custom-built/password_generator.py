@@ -1,42 +1,33 @@
 """
 password_generator.py
 
-A Python-based password and passphrase generator designed to follow current NIST
-recommendations for memorized secrets (see NIST SP 800-63B). This module produces
-cryptographically-secure random secrets and favors length and entropy over
-arbitrary, predictable composition rules.
+A Python-based password and passphrase generator following NIST SP 800-63B recommendations for memorized secrets. This module generates cryptographically secure random secrets, prioritizing length and entropy over arbitrary composition rules.
 
-Highlights
-- Uses a cryptographically secure random source (e.g., the `secrets` module).
-- Encourages longer secrets and passphrases instead of short, complex patterns.
-- Avoids enforcing arbitrary composition requirements unless required by policy.
-- Includes options for character-based secrets and word-based passphrases.
+Features:
+- Uses Python's `secrets` module for secure random generation.
+- Supports both character-based passwords and word-based passphrases.
+- Favors longer secrets and multi-word passphrases for better security.
+- Avoids enforcing unnecessary complexity requirements.
 
-Security notes and best practices
-- Prefer longer secrets (NIST encourages allowing long memorized secrets);
-  consider a minimum of 8 characters but recommend 12+ characters or multi-word
-  passphrases for interactive use.
-- Screen generated and user-supplied secrets against known-bad lists of commonly
-  used or compromised passwords.
-- Never log secrets or commit them to source control; store them in secure vaults
-  when needed.
-- If exposing a CLI, avoid writing secrets to shell history or persistent logs.
+Security Best Practices:
+- Prefer secrets with at least 8 characters; 12+ or multi-word passphrases are recommended.
+- Check generated secrets against lists of compromised passwords.
+- Never log or commit secrets; store them securely.
+- Avoid exposing secrets in CLI history or logs.
 
-References
-- NIST Special Publication 800-63B, "Digital Identity Guidelines: Authentication and Lifecycle"
-  — https://pages.nist.gov/800-63-3/sp800-63b.html
+References:
+- NIST SP 800-63B: https://pages.nist.gov/800-63-3/sp800-63b.html
 
-Disclaimer
-- This docstring summarizes best-practice guidance inspired by NIST. Before
-  deploying in production, review NIST SP 800-63B and your organization's
-  security policies and consult security experts as needed.
+Disclaimer:
+- Review NIST SP 800-63B and organizational policies before production use.
 """
 
 import secrets
 import string
 import unicodedata
-from pathlib import Path
+import math
 import logging
+from pathlib import Path
 from threading import Lock
 
 _WORDLIST_LOCK: Lock = Lock()
@@ -44,32 +35,32 @@ _WORDLIST: list[str] | None = None
 _ASCII_ALPHABET: str = string.ascii_letters + string.digits + string.punctuation
 
 
-def generate_password(
+def generate_secret(
     use_unicode: bool = False,
-    pw_type="random",
-    random_type_length=16,
-    memorable_type_length=4,
+    secret_type="password",
+    password_length=16,
+    passphrase_length=4,
     separator: str = "-",
 ) -> str:
     """
     Generate a password or passphrase.
     Returns a randomly-generated character password or a memorable word-based
-    passphrase depending on the pw_type argument. Unicode is opt-in; output is
+    passphrase depending on the secret_type argument. Unicode is opt-in; output is
     normalized to NFC.
 
     Parameters
     - use_unicode (bool): If True, include a small conservative set of extra
       Unicode characters when generating character-based passwords. Default False
       for maximum portability.
-    - pw_type (str): Type of password to generate. Supported values:
-      - "random": character-based password (default)
-      - "memorable": word-based passphrase drawn from a vetted wordlist
-    - random_type_length (int): Length (number of characters) for random type
+    - secret_type (str): Type of secret to generate. Supported values:
+      - "password": character-based password (default)
+      - "passphrase": word-based passphrase drawn from a vetted wordlist
+    - password_length (int): Length (number of characters) for password
       passwords. Defaults to 16. Values outside the supported range will be
       clamped by the underlying generator.
-    - memorable_type_length (int): Number of words for memorable passphrases.
+    - passphrase_length (int): Number of words for passphrases.
       Defaults to 4.
-    - separator (str): String used to join words for memorable passphrases.
+    - separator (str): String used to join words for passphrases.
       Default is "-".
 
     Returns
@@ -77,43 +68,41 @@ def generate_password(
       (NFC) by the underlying generators to reduce combining-character issues.
     """
 
-    PW_TYPES: set = {"random", "memorable"}
-    if pw_type not in PW_TYPES:
-        raise ValueError(f"Unsupported pw_type: {pw_type!r}")
-    if pw_type == "memorable":
-        password: str = _generate_memorable_type_password(
-            use_unicode, memorable_type_length, separator
+    SECRET_TYPES: set = {"password", "passphrase"}
+    if secret_type not in SECRET_TYPES:
+        raise ValueError(f"Unsupported secret_type: {secret_type!r}")
+    if secret_type == "passphrase":
+        secret_dict: dict = _generate_passphrase(
+            use_unicode, passphrase_length, separator
         )
     else:
-        password = _generate_random_type_password(
-            use_unicode, length=random_type_length
+        secret_dict = _generate_password(use_unicode, length=password_length)
+
+    secret: str = unicodedata.normalize("NFC", secret_dict["value"])
+
+    if secret_dict.get("bits_entropy", 0.0) < 64.0:
+        logging.warning(
+            "Generated secret has a low entropy value of %f bits.",
+            round(secret_dict.get("bits_entropy", 0.0), 2),
         )
 
-    password = unicodedata.normalize("NFC", password)
-
-    return password
+    return secret
 
 
-def _generate_random_type_password(use_unicode: bool, length: int) -> str:
+def _generate_password(use_unicode: bool, length: int) -> dict:
     """
     Generate a character-based password using a cryptographically-secure RNG.
     """
-    # Set bounds on password length.
     MIN_LENGTH: int = 8
     MAX_LENGTH: int = 64
 
-    # Ensure user-provided length is within bounds.
     length = max(MIN_LENGTH, min(length, MAX_LENGTH))
 
-    # Default alphabet using ascii characters
     global _ASCII_ALPHABET
     ascii_alphabet: str = _ASCII_ALPHABET
 
     if use_unicode:
-        # Conservative, vetted extra characters (currency/math/typographic symbols).
-        # Keep this small to reduce compatibility issues; adjust as needed.
         extra_unicode: str = "¡¢£¤¥§©®±µ¶•–—…°€†‡"
-        # Normalize and filter to printable, non-space characters
         extra_filtered: str = "".join(
             ch
             for ch in unicodedata.normalize("NFC", extra_unicode)
@@ -130,33 +119,36 @@ def _generate_random_type_password(use_unicode: bool, length: int) -> str:
 
     password = unicodedata.normalize("NFC", password)
 
-    return password
+    secret_dict: dict = _build_secret_dictionary("password", password, alphabet)
+
+    return secret_dict
 
 
-def _generate_memorable_type_password(
-    use_unicode: bool, length: int, separator: str
-) -> str:
+def _generate_passphrase(use_unicode: bool, length: int, separator: str) -> dict:
     """
-    Generate a memorable passphrase by selecting random words from a wordlist.
-
+    Generate a passphrase by selecting random words from a wordlist.
     """
     MAX_MEM_WORDS = 12
 
     if length < 1:
-        raise ValueError("Memorable passphrase length must be >= 1 ")
+        raise ValueError("Passphrase length must be >= 1 ")
     elif length < 4:
-        logging.warning("Memorable passphrases with fewer than 4 words may be weak.")
+        logging.warning("Passphrases with fewer than 4 words may be weak.")
 
     length = min(length, MAX_MEM_WORDS)
 
     wordlist: list[str] = _load_eff_wordlist()
 
-    if len(wordlist) == 0:
-        raise ValueError("Wordlist is empty; cannot generate memorable passphrase.")
+    if not wordlist:
+        raise ValueError("Wordlist is empty; cannot generate passphrase.")
 
-    password: str = separator.join(secrets.choice(wordlist) for _ in range(length))
+    passphrase: str = separator.join(secrets.choice(wordlist) for _ in range(length))
 
-    return password
+    secret_dict: dict = _build_secret_dictionary(
+        "passphrase", passphrase, wordlist=wordlist, separator=separator
+    )
+
+    return secret_dict
 
 
 def _load_eff_wordlist() -> list[str]:
@@ -192,3 +184,58 @@ def _load_eff_wordlist() -> list[str]:
         _WORDLIST = words
 
         return _WORDLIST
+
+
+def _calculate_entropy(secret_dict) -> float:
+    """Calculate the entropy of a generated secret."""
+
+    type: str = secret_dict.get("type", "")
+    alphabet: str = secret_dict.get("alphabet", "")
+    password: str = secret_dict.get("value", "")
+    separator: str = secret_dict.get("separator", "")
+    wordlist: list[str] = secret_dict.get("wordlist", [])
+    bits_entropy: float = 0.0
+
+    if type == "password":
+        unique_length: int = len(set(alphabet))
+        secret_length: int = len(password)
+        bits_entropy = secret_length * math.log2(unique_length)
+    if type == "passphrase":
+        words_used = secret_dict.get("value", "").split(separator)
+        num_words: int = len(words_used)
+        bits_entropy = num_words * math.log2(len(wordlist))
+
+    return bits_entropy
+
+
+def _build_secret_dictionary(
+    secret_type: str,
+    secret: str,
+    alphabet: str = "",
+    wordlist: list[str] = [],
+    separator: str = "",
+) -> dict:
+    """
+    Build a dictionary containing details about the generated secret.
+
+    Parameters:
+    - secret_type (str): The type of secret (e.g., "random" or "memorable").
+    - value (str): The generated secret value.
+    - alphabet (str, optional): The alphabet used for password generation (if applicable).
+    - wordlist (list[str], optional): The wordlist used for passphrase generation (if applicable).
+
+    Returns:
+    - dict[str, str, str, float]: A dictionary with keys "type", "value", "alphabet", and "bits_entropy".
+    """
+
+    secret_dict: dict = {
+        "type": secret_type,
+        "value": secret,
+        "alphabet": alphabet,
+        "wordlist": wordlist,
+        "bits_entropy": 0.0,
+    }
+
+    secret_dict["bits_entropy"] = _calculate_entropy(secret_dict)
+
+    return secret_dict
